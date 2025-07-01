@@ -1,13 +1,12 @@
-import numpy as np
 import jax
+import numpy as np
+import optax
+from flax import linen as nn
+from flax import serialization
 from jax import numpy as jnp
 from jax import random as jrandom
-from flax import linen as nn
-from flax import optim
-from flax import serialization
 
 import utils
-
 
 # Implementation of Twin Delayed Deep Deterministic Policy Gradients (TD3)
 # Paper: https://arxiv.org/abs/1802.09477
@@ -79,7 +78,7 @@ class TD3:
         policy_freq=2,
         seed=0,
         jit=False,
-    ):  
+    ):
 
         self.rngs = utils.PRNGKeys(seed)
 
@@ -91,15 +90,17 @@ class TD3:
         self.actor_model = Actor(action_dim, max_action)
         self.actor_params = self.actor_model.init(actor_rng, dummy_state)
         self.actor_target_params = self.actor_model.init(actor_rng, dummy_state)
-        self.actor_optimizer = optim.Adam(learning_rate=3e-4).create(self.actor_params)
+        self.actor_optimizer = optax.adam(learning_rate=3e-4)
+        self.actor_opt_state = self.actor_optimizer.init(self.actor_params)
 
         critic_rng = self.rngs.get_key()
         self.critic_model = Critic()
         self.critic_params = self.critic_model.init(
                 critic_rng, dummy_state, dummy_action)
         self.critic_target_params = self.critic_model.init(
-                critic_rng, dummy_state, dummy_action) 
-        self.critic_optimizer = optim.Adam(learning_rate=3e-4).create(self.critic_params)
+                critic_rng, dummy_state, dummy_action)
+        self.critic_optimizer = optax.adam(learning_rate=3e-4)
+        self.critic_opt_state = self.critic_optimizer.init(self.critic_params)
 
         self.max_action = max_action
         self.discount = discount
@@ -128,7 +129,7 @@ class TD3:
         return np.array(self.actor(self.actor_params, state)).flatten()
 
     def _critic_loss(self,
-            critic_params, 
+            critic_params,
             critic_target_params,
             actor_target_params,
             transition,
@@ -140,13 +141,13 @@ class TD3:
         noise = jnp.clip(noise, -self.noise_clip, self.noise_clip)
         next_action = self.actor_model.apply(actor_target_params, next_state)
         next_action = jnp.clip(next_action + noise, -self.max_action, self.max_action)
-        
+
         # Compute the target Q value
         target_Q1, target_Q2 = self.critic_model.apply(
                 critic_target_params, next_state, next_action)
         target_Q = jnp.minimum(target_Q1, target_Q2)
         target_Q = reward + not_done * self.discount * target_Q
-        
+
         # Get current Q estimates
         current_Q1, current_Q2 = self.critic_model.apply(critic_params, state, action)
 
@@ -158,12 +159,12 @@ class TD3:
         return critic_loss
 
     def _critic_step(self,
-            critic_optimizer,
+            critic_params,
+            critic_opt_state,
             critic_target_params,
             actor_target_params,
             transition,
             rng):
-        critic_params = critic_optimizer.target
         vgrad_fn = jax.value_and_grad(self._critic_loss, argnums=0)
         loss, grad = vgrad_fn(
                 critic_params,
@@ -171,8 +172,9 @@ class TD3:
                 actor_target_params,
                 transition,
                 rng)
-        critic_optimizer = critic_optimizer.apply_gradient(grad)
-        return critic_optimizer, loss
+        updates, critic_opt_state = self.critic_optimizer.update(grad, critic_opt_state)
+        critic_params = optax.apply_updates(critic_params, updates)
+        return critic_params, critic_opt_state, loss
 
     def _actor_loss(self, actor_params, critic_params, state):
         action = self.actor_model.apply(actor_params, state)
@@ -181,46 +183,46 @@ class TD3:
         actor_loss = -jnp.mean(q_val)
         return actor_loss
 
-    def _actor_step(self, actor_optimizer, critic_params, state):
-        actor_params = actor_optimizer.target
+    def _actor_step(self, actor_params, actor_opt_state, critic_params, state):
         vgrad_fn = jax.value_and_grad(self._actor_loss, argnums=0)
         loss, grad = vgrad_fn(actor_params, critic_params, state)
-        actor_optimizer = actor_optimizer.apply_gradient(grad)
-        return actor_optimizer, loss
+        updates, actor_opt_state = self.actor_optimizer.update(grad, actor_opt_state)
+        actor_params = optax.apply_updates(actor_params, updates)
+        return actor_params, actor_opt_state, loss
 
     def _update_target_params(self, params, target_params):
         def _update(param, target_param):
             return self.tau * param + (1 - self.tau) * target_param
-        updated_params = jax.tree_multimap(_update, params, target_params)
+        updated_params = jax.tree.map(_update, params, target_params)
         return updated_params
 
     def train(self, replay_buffer, batch_size=100):
         self.total_it += 1
 
-        # Sample replay buffer 
+        # Sample replay buffer
         state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
         transition = (state, action, next_state, reward, not_done)
 
         # critic step
         critic_step_rng = self.rngs.get_key()
-        self.critic_optimizer, _ = self.critic_step(
-                self.critic_optimizer,
+        self.critic_params, self.critic_opt_state, _ = self.critic_step(
+                self.critic_params,
+                self.critic_opt_state,
                 self.critic_target_params,
                 self.actor_target_params,
                 transition,
                 critic_step_rng)
-        self.critic_params = self.critic_optimizer.target
-        
+
 
         # Delayed policy updates
         if self.total_it % self.policy_freq == 0:
 
             # actor_step
-            self.actor_optimizer, _ = self.actor_step(
-                self.actor_optimizer,
+            self.actor_params, self.actor_opt_state, _ = self.actor_step(
+                self.actor_params,
+                self.actor_opt_state,
                 self.critic_params,
                 state)
-            self.actor_params = self.actor_optimizer.target
 
             # Update the frozen target models
             params = (self.actor_params, self.critic_params)
@@ -246,4 +248,3 @@ class TD3:
         with open(actor_file, 'rb') as f:
             self.actor_params = serialization.from_bytes(self.actor_params, f.read())
         self.actor_target_params = self.actor_params
-        

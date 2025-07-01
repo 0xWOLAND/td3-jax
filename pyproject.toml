@@ -1,0 +1,51 @@
+[project]
+name = "td3-jax"
+version = "0.1.0"
+description = "TD3 implementation in JAX"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.24.0",
+    "flax>=0.7.0",
+    "gymnasium[mujoco]>=0.29.0",
+    "jax>=0.4.13",
+    "optax>=0.1.8",
+    "imageio>=2.35.1",
+    "packaging>=25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "matplotlib>=3.7.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.3.0",
+    "ruff>=0.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short --strict-markers"
+
+[tool.coverage.run]
+source = ["td3_jax"]
+omit = ["tests/*", "*/site-packages/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501", "N802", "N806"]
