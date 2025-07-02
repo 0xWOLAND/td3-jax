@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "fasttd3-jax"
 version = "0.1.0"
@@ -14,6 +18,9 @@ dependencies = [
     "packaging>=25.0",
     "jaxlib>=0.6.2",
 ]
+
+[project.scripts]
+fasttd3-train = "scripts.train:main"
 
 [project.optional-dependencies]
 dev = [
@@ -32,7 +39,7 @@ python_functions = "test_*"
 addopts = "-v --tb=short --strict-markers"
 
 [tool.coverage.run]
-source = ["td3_jax"]
+source = ["src/fasttd3"]
 omit = ["tests/*", "*/site-packages/*"]
 
 [tool.coverage.report]
@@ -51,3 +58,6 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501", "N802", "N806"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fasttd3"]

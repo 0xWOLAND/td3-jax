@@ -2,11 +2,14 @@ import numpy as np
 import gymnasium as gym
 import argparse
 import os
+import sys
 import time
 from typing import Optional
 
-import utils
-import TD3
+# Add the src directory to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
+
+from fasttd3 import utils, td3
 
 
 def parse_arguments():
@@ -16,22 +19,23 @@ def parse_arguments():
     # Environment settings
     parser.add_argument("--env", default="HalfCheetah-v5", help="Environment name")
     parser.add_argument("--seed", default=0, type=int, help="Random seed")
-    parser.add_argument("--num_envs", default=128, type=int, help="Number of parallel environments")
+    parser.add_argument("--num_envs", default=1, type=int, help="Number of parallel environments")
 
     # Training configuration
     parser.add_argument("--max_timesteps", default=1e6, type=int, help="Total training timesteps")
+    parser.add_argument("--expl_noise", default=0.1, type=float, help="Exploration noise")
     parser.add_argument(
-        "--start_timesteps", default=5e3, type=int, help="Random exploration timesteps"
+        "--start_timesteps", default=25e3, type=int, help="Random exploration timesteps"
     )
-    parser.add_argument("--eval_freq", default=10e2, type=int, help="Evaluation frequency")
-    parser.add_argument("--batch_size", default=1024, type=int, help="Batch size for training")
-    parser.add_argument("--num_updates", default=32, type=int, help="Gradient updates per env step")
+    parser.add_argument("--eval_freq", default=5e3, type=int, help="Evaluation frequency")
+    parser.add_argument("--batch_size", default=256, type=int, help="Batch size for training")
+    parser.add_argument("--num_updates", default=1, type=int, help="Gradient updates per env step")
 
     # TD3 hyperparameters
     parser.add_argument("--discount", default=0.99, type=float, help="Discount factor")
-    parser.add_argument("--tau", default=0.01, type=float, help="Target network update rate")
+    parser.add_argument("--tau", default=0.005, type=float, help="Target network update rate")
     parser.add_argument(
-        "--policy_noise", default=0.1, type=float, help="Target policy smoothing noise"
+        "--policy_noise", default=0.2, type=float, help="Target policy smoothing noise"
     )
     parser.add_argument("--noise_clip", default=0.5, type=float, help="Noise clipping range")
     parser.add_argument(
@@ -39,8 +43,8 @@ def parse_arguments():
     )
 
     # Network configuration
-    parser.add_argument("--actor_lr", default=1e-3, type=float, help="Actor learning rate")
-    parser.add_argument("--critic_lr", default=1e-3, type=float, help="Critic learning rate")
+    parser.add_argument("--actor_lr", default=3e-4, type=float, help="Actor learning rate")
+    parser.add_argument("--critic_lr", default=3e-4, type=float, help="Critic learning rate")
     parser.add_argument("--hidden_dim", default=256, type=int, help="Hidden layer dimension")
 
     # FastTD3 specific features
@@ -54,10 +58,10 @@ def parse_arguments():
         "--num_atoms", default=101, type=int, help="Number of atoms for distributional critic"
     )
     parser.add_argument(
-        "--v_min", default=-250.0, type=float, help="Min value for distributional critic"
+        "--v_min", default=-1000.0, type=float, help="Min value for distributional critic"
     )
     parser.add_argument(
-        "--v_max", default=250.0, type=float, help="Max value for distributional critic"
+        "--v_max", default=1000.0, type=float, help="Max value for distributional critic"
     )
     parser.add_argument(
         "--normalize_obs",
@@ -196,7 +200,7 @@ def create_policy(args, state_dim: int, action_dim: int, max_action: float):
         "total_timesteps": args.max_timesteps,
         "seed": args.seed,
     }
-    return TD3.FastTD3(**policy_config)
+    return td3.FastTD3(**policy_config)
 
 
 def train_vectorized(args, env, eval_env, policy, replay_buffer, obs_normalizer):
@@ -249,6 +253,10 @@ def train_vectorized(args, env, eval_env, policy, replay_buffer, obs_normalizer)
 
         # Training updates
         if total_timesteps >= args.start_timesteps:
+            # Decay exploration noise
+            expl_noise = args.expl_noise * max(0.1, 1.0 - total_timesteps / args.max_timesteps)
+            policy.set_exploration_noise(expl_noise)
+            
             for _ in range(args.num_updates):
                 # Sample batch and apply observation normalization
                 state, action, next_state, reward, not_done = replay_buffer.sample(args.batch_size)

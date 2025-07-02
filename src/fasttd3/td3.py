@@ -7,7 +7,7 @@ from jax import numpy as jnp
 from jax import random as jrandom
 from typing import Tuple, Optional
 
-import utils
+from . import utils
 
 
 class Actor(nn.Module):
@@ -177,6 +177,7 @@ class FastTD3:
         self._compile_training_functions()
 
         self.total_it = 0
+        self.expl_noise = 0.1  # Exploration noise
 
     def _create_lr_schedules(self, lr_schedule, actor_lr, critic_lr, total_timesteps):
         """Create learning rate schedules based on configuration."""
@@ -249,7 +250,7 @@ class FastTD3:
         action = self.actor.apply(self.actor_params, state)
 
         if add_noise:
-            noise = jrandom.normal(self.rngs.get_key(), action.shape) * self.max_action * 0.1
+            noise = jrandom.normal(self.rngs.get_key(), action.shape) * self.max_action * self.expl_noise
             action = jnp.clip(action + noise, -self.max_action, self.max_action)
 
         return np.array(action).squeeze()
@@ -268,7 +269,7 @@ class FastTD3:
         actions = self.actor.apply(self.actor_params, states)
 
         if add_noise:
-            noise = jrandom.normal(self.rngs.get_key(), actions.shape) * self.max_action * 0.1
+            noise = jrandom.normal(self.rngs.get_key(), actions.shape) * self.max_action * self.expl_noise
             actions = jnp.clip(actions + noise, -self.max_action, self.max_action)
 
         return np.array(actions)
@@ -458,6 +459,10 @@ class FastTD3:
         state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
         batch = (state, action, next_state, reward, not_done)
         self._train_step(batch)
+
+    def set_exploration_noise(self, noise: float):
+        """Set exploration noise level."""
+        self.expl_noise = noise
 
     def save(self, filename):
         with open(f"{filename}_actor.pkl", "wb") as f:
