@@ -1,9 +1,13 @@
 # default recipe
 default: train
 
-# train td3
+# train td3 with optimized defaults
 train env="HalfCheetah-v5":
-    python scripts/train.py --env {{env}}
+    python scripts/train.py --env {{env}} --max_timesteps 100000 --eval_freq 20000
+
+# quick training for testing  
+train-quick env="HalfCheetah-v5":
+    python scripts/train.py --env {{env}} --max_timesteps 50000 --eval_freq 10000
 
 # run tests
 test:

@@ -19,7 +19,7 @@ def parse_arguments():
     # Environment settings
     parser.add_argument("--env", default="HalfCheetah-v5", help="Environment name")
     parser.add_argument("--seed", default=0, type=int, help="Random seed")
-    parser.add_argument("--num_envs", default=1, type=int, help="Number of parallel environments")
+    parser.add_argument("--num_envs", default=16, type=int, help="Number of parallel environments")
 
     # Training configuration
     parser.add_argument("--max_timesteps", default=1e6, type=int, help="Total training timesteps")
@@ -33,7 +33,7 @@ def parse_arguments():
 
     # TD3 hyperparameters
     parser.add_argument("--discount", default=0.99, type=float, help="Discount factor")
-    parser.add_argument("--tau", default=0.005, type=float, help="Target network update rate")
+    parser.add_argument("--tau", default=0.02, type=float, help="Target network update rate")
     parser.add_argument(
         "--policy_noise", default=0.2, type=float, help="Target policy smoothing noise"
     )
@@ -43,14 +43,14 @@ def parse_arguments():
     )
 
     # Network configuration
-    parser.add_argument("--actor_lr", default=3e-4, type=float, help="Actor learning rate")
-    parser.add_argument("--critic_lr", default=3e-4, type=float, help="Critic learning rate")
+    parser.add_argument("--actor_lr", default=1e-3, type=float, help="Actor learning rate")
+    parser.add_argument("--critic_lr", default=1e-3, type=float, help="Critic learning rate")
     parser.add_argument("--hidden_dim", default=256, type=int, help="Hidden layer dimension")
 
     # FastTD3 specific features
     parser.add_argument(
         "--distributional",
-        default=True,
+        default=False,
         type=lambda x: str(x).lower() in ["true", "1", "yes"],
         help="Use distributional critic",
     )
